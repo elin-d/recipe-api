@@ -12,7 +12,8 @@ class RecipeRatingSerializer(serializers.ModelSerializer):
         fields = ["id", "stars", "created_at"]
         read_only_fields = ["id", "created_at"]
 
-    def validate_stars(self, value):
+    @staticmethod
+    def validate_stars(value):
         if not (1 <= value <= 5):
             raise serializers.ValidationError("Rating must be between 1 and 5.")
         return value
