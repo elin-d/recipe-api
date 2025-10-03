@@ -47,3 +47,11 @@ jobs:
             pytest.xml
           show-diffcover: 'true'
 
+      - name: Review agent
+        continue-on-error: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: poetry run python agent.py $GITHUB_TOKEN $REPOSITORY $PR_NUMBER $GROQ_API_KEY
