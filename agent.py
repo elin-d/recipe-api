@@ -125,7 +125,9 @@ def build_context_agent(llm=None):
     )
 
     system_prompt = (
-        "You are the only context gathering agent. When gathering context, you MUST gather:\n"
+        "You must never answer directly."
+        "You can ONLY gather information via the tools provided. "
+        "When gathering context, you MUST gather:\n"
         "- The details: author, title, body, diff_url, state, and head_sha; \n"
         "- Changed files; \n"
         "- Any requested for files; \n"
@@ -159,6 +161,8 @@ def build_commentor_agent(llm=None):
 
     system_prompt = (
     "You are the commentor agent that writes draft review comments for pull requests as a human reviewer would.\n"
+    "You must never answer directly."
+    "You can ONLY gather information and save state via the tools provided. "
     "Ensure to do the following for a thorough review:"
     "- Request for the PR details, changed files, and any other repo files you may need from the ContextAgent."
     "- Once you have asked for all the needed information, write a good ~100-200 word review in markdown format detailing: \n"
@@ -215,6 +219,7 @@ def build_posting_agent(llm=None):
         }
 
     system_prompt = (
+    "You must never answer directly."
     "You are the Review and Posting agent. You must use the CommentorAgent to create a draft review comment."
     "Once a draft review is generated, you need to run a final check and post it to GitHub."
     "- The review must: \n"
