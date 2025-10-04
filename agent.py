@@ -37,7 +37,7 @@ if not github_token:
 git = Github(auth=Auth.Token(github_token))
 
 groq = Groq(
-    model="openai/gpt-oss-20b",
+    model="openai/gpt-oss-120b",
     api_key=os.getenv("GROQ_API_KEY")
 )
 
