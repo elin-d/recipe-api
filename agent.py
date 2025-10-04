@@ -48,9 +48,6 @@ repo = git.get_repo(full_repo_name)
 def build_context_agent(llm=None):
     """Create a ReActAgent configured to gather context from GitHub repos."""
 
-    async def save_draft_comment_to_state(draft_comment: str):
-        return {"draft_comment": draft_comment}
-
     def get_pr_details(pr_number: int) -> dict:
         """Fetch pull request details: author, title, body, diff_url, state, head_sha, commits"""
         pr = repo.get_pull(pr_number)
@@ -126,7 +123,7 @@ def build_context_agent(llm=None):
         llm=llm,
         name="ContextAgent",
         description="Gathers all the needed context from GitHub and save it to state.",
-        tools=[pr_tool, file_tool, commit_tool, save_draft_comment_to_state],
+        tools=[pr_tool, file_tool, commit_tool],
         system_prompt=system_prompt,
         can_handoff_to=["CommentorAgent"]
     )
