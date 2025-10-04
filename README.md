@@ -1,6 +1,8 @@
-# Recipe-API
+# Recipe-API - AI Pull-request agent playground
 
-**Recipe-API** is a Django REST Framework application that provides a simple, robust API for managing recipes, ingredients, categories, and user interactions.
+This project is a playground for an automatic LLM agent that adds comments on every PR, highlighting shortcomings.
+
+**Recipe-API** itself is a Django REST Framework application that provides a simple, robust API for managing recipes, ingredients, categories, and user interactions.
 
 ## Features
 
