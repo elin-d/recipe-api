@@ -16,6 +16,7 @@ from github import Github, Auth
 try:
     from llama_index.core.tools import FunctionTool
     from llama_index.llms.groq import Groq
+    from llama_index.llms.ollama import Ollama
     from llama_index.core.workflow import Context
     from llama_index.core.agent.workflow import AgentWorkflow
     from llama_index.core.agent.workflow import FunctionAgent
@@ -29,17 +30,17 @@ except ImportError as e:
 from dotenv import load_dotenv
 load_dotenv()
 
+groq = Groq(
+    model="openai/gpt-oss-120b",
+    api_key=os.getenv("GROQ_API_KEY")
+)
+
 # Initialize GitHub client
 github_token = os.getenv("GITHUB_TOKEN")
 if not github_token:
     raise ValueError("GITHUB_TOKEN environment variable is required")
 
 git = Github(auth=Auth.Token(github_token))
-
-groq = Groq(
-    model="openai/gpt-oss-120b",
-    api_key=os.getenv("GROQ_API_KEY")
-)
 
 full_repo_name = os.getenv("REPOSITORY")
 
@@ -48,8 +49,17 @@ repo = git.get_repo(full_repo_name)
 def build_context_agent(llm=None):
     """Create a ReActAgent configured to gather context from GitHub repos."""
 
-    async def save_draft_comment_to_state(draft_comment: str):
-        return {"draft_comment": draft_comment}
+    if llm is None:
+        llm = Ollama(
+            model="gpt-oss",
+            base_url=os.getenv("OLLAMA_BASE_URL"),
+        )
+
+    async def add_context_to_state(ctx: Context, gathered_contexts: str):
+
+        async with ctx.store.edit_state() as ctx_state:
+            ctx_state["state"]["gathered_contexts"] = gathered_contexts
+        return "Context gathered."
 
     def get_pr_details(pr_number: int) -> dict:
         """Fetch pull request details: author, title, body, diff_url, state, head_sha, commits"""
@@ -115,7 +125,7 @@ def build_context_agent(llm=None):
     )
 
     system_prompt = (
-        "You are the context gathering agent. When gathering context, you MUST gather:\n"
+        "You are the only context gathering agent. When gathering context, you MUST gather:\n"
         "- The details: author, title, body, diff_url, state, and head_sha; \n"
         "- Changed files; \n"
         "- Any requested for files; \n"
@@ -126,7 +136,7 @@ def build_context_agent(llm=None):
         llm=llm,
         name="ContextAgent",
         description="Gathers all the needed context from GitHub and save it to state.",
-        tools=[pr_tool, file_tool, commit_tool, save_draft_comment_to_state],
+        tools=[pr_tool, file_tool, commit_tool, add_context_to_state],
         system_prompt=system_prompt,
         can_handoff_to=["CommentorAgent"]
     )
@@ -135,14 +145,20 @@ def build_context_agent(llm=None):
 
 def build_commentor_agent(llm=None):
     """Create a ReActAgent configured to generate draft PR comments."""
+    if llm is None:
+        llm = Ollama(
+            model="gpt-oss",
+            base_url=os.getenv("OLLAMA_BASE_URL"),
+        )
 
-    async def save_draft_comment_to_state(draft_comment: str):
+    async def save_draft_comment_to_state(ctx: Context, draft_comment: str):
         """Return draft so the workflow can store it without touching outer Context."""
-        return {"draft_comment": draft_comment}
+        async with ctx.store.edit_state() as ctx_state:
+            ctx_state["state"]["review_comment"] = draft_comment
+        return "Comment drafted."
 
     system_prompt = (
     "You are the commentor agent that writes draft review comments for pull requests as a human reviewer would.\n"
-    "You MUST save this draft to state and handle control to the ReviewAndPostingAgent."
     "Ensure to do the following for a thorough review:"
     "- Request for the PR details, changed files, and any other repo files you may need from the ContextAgent."
     "- Once you have asked for all the needed information, write a good ~100-200 word review in markdown format detailing: \n"
@@ -151,6 +167,7 @@ def build_commentor_agent(llm=None):
     "- If you need any additional details, you must hand off to the Context Agent. \n"
     "- You should directly address the author.So your comments should sound like: \n"
     "\"Thanks for fixing this. I think all places where we call quote should be fixed. Can you roll this fix out everywhere?\""
+    "You MUST save your draft to state and hand off it to the ReviewAndPostingAgent."
     )
 
     agent = FunctionAgent(
@@ -166,19 +183,31 @@ def build_commentor_agent(llm=None):
 
 def build_posting_agent(llm=None):
     """Create a ReActAgent configured to post the draft PR comments."""
+    if llm is None:
+        llm = Ollama(
+            model="gpt-oss",
+            base_url=os.getenv("OLLAMA_BASE_URL"),
+        )
 
-    async def add_final_review_to_state(final_review: str):
+    async def add_final_review_to_state(ctx: Context, final_review: str):
         """Add the final review to the state under the final_review key."""
-        return {"final_review": final_review}
+        async with ctx.store.edit_state() as ctx_state:
+            ctx_state["state"]["final_review_comment"] = final_review
+        return "Final review ready and need to be posted to GitHub."
 
-    def post_final_review_to_github(pr_number: int, final_review_comment: str) -> dict:
+    def post_final_review_to_github(final_review_comment: str) -> dict:
         """Post the final review comment to GitHub on the given pull request.
 
         This fetches the PR and uses create_review() to post the comment as a review body.
         """
-        pr = repo.get_pull(pr_number)
-        # Post the final review comment as a review body
-        review = pr.create_review(body=final_review_comment)
+        pr = repo.get_pull(int(os.getenv("PR_NUMBER")))
+
+        commit = repo.get_commit(pr.head.sha)
+        review = pr.create_review(
+            commit=commit,
+            body=final_review_comment,
+            event="COMMENT",
+        )
         return {
             "review_id": review.id,
             "state": review.state,
